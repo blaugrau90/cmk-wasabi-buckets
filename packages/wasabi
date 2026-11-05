@@ -1,9 +1,10 @@
 {
     'author': 'Luca-Leon Hausdoerfer - (cmk@hausdoerfer.dev)',
     'description': 'Monitors the storage utilization (Active + Deleted storage) of all buckets '
-                   'in a Wasabi account. Buckets are discovered automatically via the Wasabi '
-                   'Stats API - no bucket names need to be configured. No thresholds; the '
-                   'service is always OK and exposes bucket size metrics for graphing.',
+                   'in a Wasabi account, plus an account-wide total across all buckets. '
+                   'Buckets are discovered automatically via the Wasabi Stats API - no bucket '
+                   'names need to be configured. No thresholds; services are always OK and '
+                   'expose size metrics for graphing.',
     'download_url': 'https://github.com/blaugrau90/cmk-wasabi-buckets',
     'files': {
         'agents': ['special/agent_wasabi'],
@@ -16,7 +17,7 @@
     },
     'name': 'wasabi',
     'title': 'Wasabi Storage Utilization',
-    'version': '1.0.0',
+    'version': '1.1.0',
     'version.min_required': '2.3.0b1',
     'version.packaged': 'cmk-mkp-tool 1.0.0',
     'version.usable_until': None,

@@ -10,8 +10,9 @@ A Checkmk 2.5 MKP plugin that monitors the storage utilization of every bucket i
 
 - **Automatic bucket discovery** via the Wasabi Stats API — no bucket names configured anywhere; new buckets appear after the next service discovery, deleted ones drop out
 - One service per bucket: **Wasabi Bucket \<name\>**, showing **Active** and **Deleted** storage (the two components Wasabi actually bills for) plus their sum
-- **No thresholds** — the service is always OK; it exists purely to expose values and metrics for graphing
-- Stacked graph and perfometer: Active + Deleted, summing visually to total utilization
+- A single **Wasabi Account Storage** service summing Active + Deleted storage across **all** buckets — the account-wide total
+- **No thresholds** — services are always OK; they exist purely to expose values and metrics for graphing
+- Stacked graph and perfometer: Active + Deleted, summing visually to total utilization (per bucket and account-wide)
 - A bucket that disappears from the API (e.g. deleted) reports **UNKNOWN** instead of crashing, until the next discovery run drops the service entirely
 - Secret Key is passed through Checkmk's **Password Store** — never stored in plaintext in the rule
 
@@ -27,14 +28,14 @@ The Access Key used by this plugin only needs read access to billing/utilization
 
 ### Via Checkmk GUI (recommended)
 
-1. Download `wasabi-1.0.0.mkp` from the [Releases](https://github.com/blaugrau90/cmk-wasabi-buckets/releases) page
+1. Download `wasabi-1.1.0.mkp` from the [Releases](https://github.com/blaugrau90/cmk-wasabi-buckets/releases) page
 2. In Checkmk: **Setup → Extension Packages → Upload package**
 3. Upload the `.mkp` file and click **Install**
 
 ### Via CLI (as site user)
 
 ```bash
-mkp add wasabi-1.0.0.mkp
+mkp add wasabi-1.1.0.mkp
 mkp enable wasabi
 ```
 
@@ -61,7 +62,7 @@ Access Key and Secret Key are combined by the special agent into `Authorization:
 
 ### Run the first discovery
 
-Run **Service discovery** on the dummy host. One service `Wasabi Bucket <name>` appears per bucket returned by the Wasabi account.
+Run **Service discovery** on the dummy host. One service `Wasabi Bucket <name>` appears per bucket returned by the Wasabi account, plus a single `Wasabi Account Storage` service for the account-wide total.
 
 ### Enable Periodic Service Discovery (recommended)
 
@@ -75,10 +76,12 @@ There is no check-parameters ruleset — the check has no thresholds by design. 
 
 ### Service states
 
-| State | Condition |
-|---|---|
-| OK | Bucket present in the API response (always, regardless of size) |
-| UNKNOWN | A previously discovered bucket no longer appears in the API response (e.g. deleted) |
+| Service | State | Condition |
+|---|---|---|
+| Wasabi Bucket \<name\> | OK | Bucket present in the API response (always, regardless of size) |
+| Wasabi Bucket \<name\> | UNKNOWN | A previously discovered bucket no longer appears in the API response (e.g. deleted) |
+| Wasabi Account Storage | OK | At least one bucket is present in the API response |
+| Wasabi Account Storage | UNKNOWN | No bucket data available at all (e.g. the special agent returned nothing) |
 
 ---
 
@@ -93,9 +96,10 @@ Checkmk Check Cycle
   └─ Checkmk Section  <<<wasabi_bucket_utilization:sep(0)>>>
        {"bucket": "my-bucket", "region": "eu-central-1",
         "active_bytes": 123456789, "deleted_bytes": 4567, ...}
-  └─ Check plugin (wasabi/agent_based/)
-       ├─ One service per bucket (discovery)
-       └─ Reports Active + Deleted + Total as metrics, always OK
+  └─ Check plugins (wasabi/agent_based/), both sharing the section above
+       ├─ wasabi_bucket_utilization:  one service per bucket
+       └─ wasabi_account_utilization: one service, summed across all buckets
+       Both report Active + Deleted + Total as metrics, always OK
 ```
 
 ---

@@ -65,6 +65,7 @@ def _install_fake_cmk_agent_based_v2() -> None:
         check_function: Any
         check_default_parameters: dict = field(default_factory=dict)
         check_ruleset_name: str | None = None
+        sections: list | None = None
 
     def _disksize(bytes_: float) -> str:
         value = float(bytes_)
@@ -76,6 +77,7 @@ def _install_fake_cmk_agent_based_v2() -> None:
 
     class _Render:
         disksize = staticmethod(_disksize)
+        bytes = staticmethod(_disksize)
 
     StringTable = list
     CheckResult = Iterable
