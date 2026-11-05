@@ -1,0 +1,23 @@
+{
+    'author': 'Luca-Leon Hausdoerfer - (cmk@hausdoerfer.dev)',
+    'description': 'Monitors the storage utilization (Active + Deleted storage) of all buckets '
+                   'in a Wasabi account. Buckets are discovered automatically via the Wasabi '
+                   'Stats API - no bucket names need to be configured. No thresholds; the '
+                   'service is always OK and exposes bucket size metrics for graphing.',
+    'download_url': 'https://github.com/blaugrau90/cmk-wasabi-buckets',
+    'files': {
+        'agents': ['special/agent_wasabi'],
+        'cmk_addons_plugins': [
+            'wasabi/agent_based/wasabi_bucket_utilization.py',
+            'wasabi/rulesets/wasabi.py',
+            'wasabi/server_side_calls/special_agent.py',
+            'wasabi/graphing/wasabi_bucket_utilization.py',
+        ],
+    },
+    'name': 'wasabi',
+    'title': 'Wasabi Storage Utilization',
+    'version': '1.0.0',
+    'version.min_required': '2.3.0b1',
+    'version.packaged': 'cmk-mkp-tool 1.0.0',
+    'version.usable_until': None,
+}
