@@ -13,7 +13,6 @@ import sys
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import datetime, timedelta, timezone
 
 SECTION_HEADER = "<<<wasabi_bucket_utilization:sep(0)>>>"
 PAGE_SIZE = 100  # Wasabi Stats API caps pageSize at 100; larger values return HTTP 400
@@ -50,8 +49,15 @@ def api_get(base_url: str, path: str, params: dict, auth_header: str, timeout: i
     return data
 
 
-def fetch_all_records(base_url: str, auth_header: str, date_from: str, date_to: str, timeout: int) -> list:
-    """Fetch all bucket utilization records across all pages."""
+def fetch_all_records(base_url: str, auth_header: str, timeout: int) -> list:
+    """Fetch all bucket utilization records across all pages.
+
+    Deliberately sends no from/to/latest filter: with a from/to window the Wasabi
+    Stats API silently drops buckets (verified: a bucket present without the filter
+    vanished with it, even for a 30-day window or to=tomorrow). Without parameters
+    it returns the recent daily records of every bucket; newest_per_bucket() then
+    picks the newest one per bucket.
+    """
     records: list = []
     page_num = 1
     while True:
@@ -61,9 +67,6 @@ def fetch_all_records(base_url: str, auth_header: str, date_from: str, date_to: 
             {
                 "pageSize": PAGE_SIZE,
                 "pageNum": page_num,
-                "from": date_from,
-                "to": date_to,
-                "latest": "true",
             },
             auth_header,
             timeout,
@@ -101,21 +104,13 @@ def main() -> int:
     parser.add_argument(
         "--base-url", default="https://stats.wasabisys.com", help="Wasabi Stats API base URL"
     )
-    parser.add_argument(
-        "--lookback-days", type=int, default=30, help="Days to look back for the 'from' date"
-    )
     parser.add_argument("--timeout", type=int, default=30, help="Request timeout in seconds")
     args = parser.parse_args()
 
-    today = datetime.now(timezone.utc).date()
-    date_from = (today - timedelta(days=args.lookback_days)).isoformat()
-    date_to = today.isoformat()
     auth_header = f"{args.access_key}:{args.secret_key}"
 
     try:
-        records = fetch_all_records(
-            args.base_url, auth_header, date_from, date_to, args.timeout
-        )
+        records = fetch_all_records(args.base_url, auth_header, args.timeout)
     except RuntimeError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1

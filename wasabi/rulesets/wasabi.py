@@ -6,17 +6,23 @@ from cmk.rulesets.v1.form_specs import (
     DefaultValue,
     DictElement,
     Dictionary,
-    Integer,
     Password,
     String,
     migrate_to_password,
-    validators,
 )
 from cmk.rulesets.v1.rule_specs import SpecialAgent, Topic
 
 
+def _migrate_remove_lookback(value: object) -> dict:
+    """Drop the 'lookback_days' option of versions <= 1.1.0 from existing rules."""
+    if not isinstance(value, dict):
+        raise TypeError(value)
+    return {k: v for k, v in value.items() if k != "lookback_days"}
+
+
 def _special_agent_formspec() -> Dictionary:
     return Dictionary(
+        migrate=_migrate_remove_lookback,
         title=Title("Wasabi Storage Utilization"),
         help_text=Help(
             "Connect to the Wasabi Stats API to monitor the storage utilization of all "
@@ -56,24 +62,6 @@ def _special_agent_formspec() -> Dictionary:
                         "setups, e.g. a different Wasabi region endpoint."
                     ),
                     prefill=DefaultValue("https://stats.wasabisys.com"),
-                ),
-            ),
-            "lookback_days": DictElement(
-                required=True,
-                parameter_form=Integer(
-                    title=Title("Lookback period (days)"),
-                    help_text=Help(
-                        "Number of days before today to use as the 'from' date when "
-                        "querying the utilization API. The agent always uses the most "
-                        "recent record per bucket within this window, so this only needs "
-                        "to be large enough to reliably contain at least one data point "
-                        "per bucket. Wasabi's daily utilization snapshots can lag by "
-                        "several days before they appear in the Stats API, so a short "
-                        "window (e.g. 2 days) may return no data at all - 30 days is a "
-                        "safe default."
-                    ),
-                    prefill=DefaultValue(30),
-                    custom_validate=(validators.NumberInRange(min_value=1, max_value=90),),
                 ),
             ),
         },

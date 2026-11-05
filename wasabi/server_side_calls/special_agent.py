@@ -17,7 +17,6 @@ class Params(BaseModel):
     access_key: str
     secret_key: Secret
     base_url: str = "https://stats.wasabisys.com"
-    lookback_days: int = 30
 
 
 def _agent_arguments(
@@ -27,7 +26,6 @@ def _agent_arguments(
         "--access-key", params.access_key,
         "--secret-key", params.secret_key.unsafe("%s"),
         "--base-url", params.base_url,
-        "--lookback-days", str(params.lookback_days),
     ]
 
     yield SpecialAgentCommand(command_arguments=args)

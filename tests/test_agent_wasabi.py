@@ -47,7 +47,7 @@ def test_fetch_all_records_paginates_until_short_page():
 
     with patch.object(agent_wasabi, "api_get", side_effect=fake_api_get):
         records = agent_wasabi.fetch_all_records(
-            "https://stats.wasabisys.com", "key", "2026-09-23", "2026-09-25", 30
+            "https://stats.wasabisys.com", "key", 30
         )
 
     assert calls == [1, 2]
@@ -57,7 +57,7 @@ def test_fetch_all_records_paginates_until_short_page():
 def test_fetch_all_records_stops_on_empty_page():
     with patch.object(agent_wasabi, "api_get", return_value=[]):
         records = agent_wasabi.fetch_all_records(
-            "https://stats.wasabisys.com", "key", "2026-09-23", "2026-09-25", 30
+            "https://stats.wasabisys.com", "key", 30
         )
 
     assert records == []
@@ -129,3 +129,12 @@ def test_api_get_raises_runtime_error_on_invalid_json():
                 "https://stats.wasabisys.com", "/v1/standalone/utilizations/bucket",
                 {}, "key", 5,
             )
+
+
+def test_fetch_all_records_sends_no_time_filter():
+    """The Stats API drops buckets when from/to/latest are sent - never send them."""
+    with patch.object(agent_wasabi, "api_get", return_value=[]) as mock_get:
+        agent_wasabi.fetch_all_records("https://stats.wasabisys.com", "key", 30)
+
+    params = mock_get.call_args.args[2]
+    assert not {"from", "to", "latest"} & set(params)

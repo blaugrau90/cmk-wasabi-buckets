@@ -56,7 +56,6 @@ Under **Setup → Agents → Other integrations → Wasabi Storage Utilization**
 | Wasabi Access Key | Your Wasabi Access Key ID |
 | Wasabi Secret Key | The matching Secret Key — enter directly or, recommended, pick from the Password Store |
 | Stats API base URL | Default `https://stats.wasabisys.com`, only change for special setups |
-| Lookback period | Default 30 days. Wasabi's daily utilization snapshots can lag by several days before they appear in the Stats API — a short window (e.g. 2 days) can return no data at all |
 
 Access Key and Secret Key are combined by the special agent into `Authorization: <AccessKey>:<SecretKey>`, as required by the Wasabi Stats API.
 
@@ -72,7 +71,7 @@ So that newly created Wasabi buckets show up automatically without manual interv
 
 ## Configuration
 
-There is no check-parameters ruleset — the check has no thresholds by design. The only configurable values are the Special Agent settings above (Access Key, Secret Key, base URL, lookback period).
+There is no check-parameters ruleset — the check has no thresholds by design. The only configurable values are the Special Agent settings above (Access Key, Secret Key, base URL).
 
 ### Service states
 
@@ -108,7 +107,7 @@ Checkmk Check Cycle
 
 ```
 wasabi/
-├── rulesets/wasabi.py                       # Setup rule: Access Key, Secret Key, base URL, lookback
+├── rulesets/wasabi.py                       # Setup rule: Access Key, Secret Key, base URL
 ├── server_side_calls/special_agent.py       # Builds the agent_wasabi call, handles the Secret
 ├── agent_based/wasabi_bucket_utilization.py # Parse / discovery / check logic
 ├── graphing/wasabi_bucket_utilization.py    # Metrics, stacked graph, perfometer
