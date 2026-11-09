@@ -48,8 +48,9 @@ def parse_wasabi_bucket_utilization(string_table: StringTable) -> dict[str, Any]
 
 
 def discover_wasabi_bucket_utilization(section: dict[str, Any]) -> DiscoveryResult:
-    for name in section:
-        yield Service(item=name)
+    for name, bucket in section.items():
+        if not bucket.get("obsolete"):  # do not create services for buckets that stopped reporting
+            yield Service(item=name)
 
 
 def check_wasabi_bucket_utilization(item: str, section: dict[str, Any]) -> CheckResult:
@@ -58,6 +59,17 @@ def check_wasabi_bucket_utilization(item: str, section: dict[str, Any]) -> Check
         yield Result(
             state=State.UNKNOWN,
             summary="Bucket no longer reported by the Wasabi API (may have been deleted)",
+        )
+        return
+
+    if bucket.get("obsolete"):
+        last_day = str(bucket.get("end_time") or "unknown")[:10]
+        yield Result(
+            state=State.WARN,
+            summary=(
+                f"Obsolete: no utilization data since {last_day}, bucket was probably "
+                "deleted (the service disappears a few days later)"
+            ),
         )
         return
 
@@ -93,12 +105,18 @@ check_plugin_wasabi_bucket_utilization = CheckPlugin(
 )
 
 
+def _current_buckets(section: dict[str, Any]) -> dict[str, Any]:
+    """Buckets that still report data (obsolete/deleted ones are not part of the total)."""
+    return {name: bucket for name, bucket in section.items() if not bucket.get("obsolete")}
+
+
 def discover_wasabi_account_utilization(section: dict[str, Any]) -> DiscoveryResult:
-    if section:
+    if _current_buckets(section):
         yield Service()
 
 
 def check_wasabi_account_utilization(section: dict[str, Any]) -> CheckResult:
+    section = _current_buckets(section)
     if not section:
         yield Result(state=State.UNKNOWN, summary="No bucket data available")
         return

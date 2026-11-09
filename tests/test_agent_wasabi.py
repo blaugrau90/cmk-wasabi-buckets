@@ -43,14 +43,14 @@ def test_fetch_all_records_paginates_until_short_page():
 
     def fake_api_get(base_url, path, params, api_key, timeout):
         calls.append(params["pageNum"])
-        return page1 if params["pageNum"] == 1 else page2
+        return page1 if params["pageNum"] == 0 else page2
 
     with patch.object(agent_wasabi, "api_get", side_effect=fake_api_get):
         records = agent_wasabi.fetch_all_records(
             "https://stats.wasabisys.com", "key", 30
         )
 
-    assert calls == [1, 2]
+    assert calls == [0, 1]
     assert len(records) == agent_wasabi.PAGE_SIZE + 1
 
 
@@ -132,9 +132,75 @@ def test_api_get_raises_runtime_error_on_invalid_json():
 
 
 def test_fetch_all_records_sends_no_time_filter():
-    """The Stats API drops buckets when from/to/latest are sent - never send them."""
+    """The agent reads the API's default window completely and picks the newest record itself."""
     with patch.object(agent_wasabi, "api_get", return_value=[]) as mock_get:
         agent_wasabi.fetch_all_records("https://stats.wasabisys.com", "key", 30)
 
     params = mock_get.call_args.args[2]
     assert not {"from", "to", "latest"} & set(params)
+
+
+def test_fetch_all_records_pages_are_zero_based_and_keep_all_buckets():
+    """Regression: the Wasabi API pages are zero-based. Starting at pageNum=1 skipped the
+    first 100 records, so only the tail of the list (here: the last 2 records of a
+    102-record list) was seen and a bucket went missing."""
+    buckets = ["example-bucket-a", "example-bucket-b", "example-bucket-c"]
+    all_records = [
+        {"Bucket": b, "EndTime": f"2026-10-{day:02d}T00:00:00Z"}
+        for day in range(1, 35)
+        for b in buckets
+    ]  # 102 records, sorted by day then bucket
+    assert len(all_records) == 102
+
+    def fake_api_get(base_url, path, params, api_key, timeout):
+        start = params["pageNum"] * params["pageSize"]
+        return all_records[start : start + params["pageSize"]]
+
+    with patch.object(agent_wasabi, "api_get", side_effect=fake_api_get):
+        records = agent_wasabi.fetch_all_records("https://stats.wasabisys.com", "key", 30)
+
+    assert len(records) == 102
+    assert set(agent_wasabi.newest_per_bucket(records)) == set(buckets)
+
+
+def test_fetch_all_records_gives_up_if_pagination_never_ends():
+    full_page = [{"Bucket": "b"}] * agent_wasabi.PAGE_SIZE
+
+    with patch.object(agent_wasabi, "api_get", return_value=full_page):
+        with pytest.raises(RuntimeError, match="giving up"):
+            agent_wasabi.fetch_all_records("https://stats.wasabisys.com", "key", 30)
+
+
+def _rec(day: int) -> dict:
+    return {"EndTime": f"2026-10-{day:02d}T00:00:00Z"}
+
+
+def test_classify_buckets_flags_stale_bucket_as_obsolete():
+    newest = {"live": _rec(30), "late": _rec(29), "gone": _rec(27)}
+
+    result = {name: obsolete for name, _, obsolete in agent_wasabi.classify_buckets(newest)}
+
+    assert result == {"live": False, "late": False, "gone": True}  # 1 day late is fine, 3 is not
+
+
+def test_classify_buckets_drops_bucket_after_seven_days():
+    newest = {"live": _rec(30), "gone-7d": _rec(23), "gone-8d": _rec(22)}
+
+    names = [name for name, _, _ in agent_wasabi.classify_buckets(newest)]
+
+    assert names == ["live", "gone-7d"]  # 7 days still shown, 8 days no longer
+
+
+def test_classify_buckets_is_relative_to_api_data_not_local_clock():
+    """If the whole API is behind, nothing may be flagged obsolete."""
+    newest = {"a": _rec(1), "b": _rec(1)}
+
+    assert [o for _, _, o in agent_wasabi.classify_buckets(newest)] == [False, False]
+
+
+def test_classify_buckets_keeps_bucket_with_unparsable_end_time():
+    newest = {"live": _rec(30), "odd": {"EndTime": "garbage"}, "none": {}}
+
+    result = {name: obsolete for name, _, obsolete in agent_wasabi.classify_buckets(newest)}
+
+    assert result == {"live": False, "odd": False, "none": False}

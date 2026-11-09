@@ -13,7 +13,7 @@ A Checkmk 2.5 MKP plugin that monitors the storage utilization of every bucket i
 - A single **Wasabi Account Storage** service summing Active + Deleted storage across **all** buckets — the account-wide total
 - **No thresholds** — services are always OK; they exist purely to expose values and metrics for graphing
 - Stacked graph and perfometer: Active + Deleted, summing visually to total utilization (per bucket and account-wide)
-- A bucket that disappears from the API (e.g. deleted) reports **UNKNOWN** instead of crashing, until the next discovery run drops the service entirely
+- A bucket that stops producing data (e.g. deleted) is flagged **obsolete** (service **WARN**) for at most 7 days and is then dropped; it is excluded from the account total and never newly discovered. A bucket that is missing from the agent output altogether reports **UNKNOWN** instead of crashing, until the next discovery run drops the service
 - Secret Key is passed through Checkmk's **Password Store** — never stored in plaintext in the rule
 
 ---
@@ -178,7 +178,7 @@ pytest tests/
 
 ## Wasabi Stats API
 
-- `GET /v1/standalone/utilizations/bucket` (paginated via `pageSize`/`pageNum`, capped at `pageSize=100` by the API; time window via `from`/`to`) returns utilization records for **all** buckets in one call — this is what makes automatic discovery possible. The response is wrapped as `{"PageInfo": {...}, "Records": [...]}`. If a bucket has multiple records in the window, the special agent picks the one with the newest `EndTime`.
+- `GET /v1/standalone/utilizations/bucket` (paginated via `pageSize`/`pageNum`, capped at `pageSize=100` by the API; **`pageNum` is zero-based**, and without a time window the API returns about 31 days of daily records) returns utilization records for **all** buckets — this is what makes automatic discovery possible. The response is wrapped as `{"PageInfo": {...}, "Records": [...]}`. If a bucket has multiple records in the window, the special agent picks the one with the newest `EndTime`.
 - The per-bucket endpoints (`/bucket/:bucketName`, `/bucket/:bucketNumber`) are intentionally not used — they play no role in automatic discovery, and the bucket-number variant additionally requires an undocumented `X-Wasabi-Service` header.
 
 ## Error Handling

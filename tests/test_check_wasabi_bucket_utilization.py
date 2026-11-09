@@ -105,3 +105,39 @@ def test_account_check_reports_unknown_when_no_buckets():
 
     assert len(results) == 1
     assert results[0].state == check.State.UNKNOWN
+
+
+def test_obsolete_bucket_is_not_discovered():
+    section = {"live": {"active_bytes": 1}, "gone": {"obsolete": True, "end_time": "2026-10-18T00:00:00Z"}}
+
+    services = list(check.discover_wasabi_bucket_utilization(section))
+
+    assert {s.item for s in services} == {"live"}
+
+
+def test_obsolete_bucket_reports_warn_without_metrics():
+    section = {"gone": {"obsolete": True, "end_time": "2026-10-18T00:00:00Z", "active_bytes": 0}}
+
+    results = list(check.check_wasabi_bucket_utilization("gone", section))
+
+    assert len(results) == 1
+    assert results[0].state == check.State.WARN
+    assert "2026-10-18" in results[0].summary
+    assert "Obsolete" in results[0].summary
+
+
+def test_account_total_excludes_obsolete_buckets():
+    section = {
+        "live": {"active_bytes": 100, "deleted_bytes": 10},
+        "gone": {"active_bytes": 999, "deleted_bytes": 999, "obsolete": True},
+    }
+
+    results = list(check.check_wasabi_account_utilization(section))
+
+    metrics = {r.name: r.value for r in results if isinstance(r, check.Metric)}
+    assert metrics["wasabi_total_bytes"] == 110
+    assert "across 1 bucket" in next(r for r in results if isinstance(r, check.Result)).summary
+
+
+def test_account_service_not_discovered_if_only_obsolete_buckets():
+    assert list(check.discover_wasabi_account_utilization({"gone": {"obsolete": True}})) == []

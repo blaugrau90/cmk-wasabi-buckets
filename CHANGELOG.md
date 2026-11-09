@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.1] — 2026-11-09
+
+- **Fixed buckets still going missing / reported as "no longer reported by the Wasabi API" (actual root cause).** The Wasabi Stats API paginates **zero-based** (`pageNum=0` is the first page and the default). The agent started at `pageNum=1` and therefore skipped the first 100 records. The API returns about 31 days of daily records, sorted by time, so what remained was only the tail of that list. Which buckets appeared in that tail depended on where the 100-record page boundary happened to fall, so a bucket could vanish for days and reappear whenever a new daily record shifted the boundary. The agent now starts at `pageNum=0` and reads all pages.
+- This also explains why requests with a `from`/`to` window seemed to "drop" buckets or return nothing: a short window holds fewer than 100 records, so the (skipped) first page held all of them and the second page was empty. The explanation given for 1.2.0 (time window silently drops buckets) was therefore incomplete; removing the window was harmless but not the real fix. The *Lookback period* setting stays removed.
+- Added a safety stop if pagination never ends, and regression tests for the zero-based paging.
+- **Deleted buckets are shown as obsolete for a limited time.** The API keeps returning a deleted bucket's last records for ~31 days. A bucket whose newest record is 2 or more days behind the newest record of the account is now reported as **obsolete** (service goes WARN: "no utilization data since <date>, bucket was probably deleted") and no new service is discovered for it. Once it is more than 7 days behind, the agent stops reporting it, so the service disappears. Obsolete buckets are excluded from the **Wasabi Account Storage** total. The age is measured against the API's own newest record, not the local clock, so a delay on Wasabi's side does not mark anything obsolete.
+
 ## [1.2.0] — 2026-11-05
 
 - **Fixed buckets randomly missing / reported as "no longer reported by the Wasabi API".** The Wasabi Stats API silently drops buckets from its response when a `from`/`to` time window is sent (reproduced with a 30-day window, without `latest`, and with `to` set to tomorrow; the same request without a window returned all buckets). The special agent sent `from`, `to` and `latest=true` on every request, so affected buckets intermittently (typically around Wasabi's nightly recalculation) or permanently vanished and their services went UNKNOWN. The agent now sends no time filter and picks the newest record per bucket itself.

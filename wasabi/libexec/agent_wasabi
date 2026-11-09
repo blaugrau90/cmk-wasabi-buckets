@@ -13,9 +13,13 @@ import sys
 import urllib.error
 import urllib.parse
 import urllib.request
+from datetime import datetime, timezone
 
 SECTION_HEADER = "<<<wasabi_bucket_utilization:sep(0)>>>"
 PAGE_SIZE = 100  # Wasabi Stats API caps pageSize at 100; larger values return HTTP 400
+OBSOLETE_AFTER_DAYS = 2  # bucket is this many days behind the newest record of the account -> obsolete
+HIDE_AFTER_DAYS = 7  # ... and is no longer reported at all after this many days
+MAX_PAGES = 1000  # safety stop in case the API ignores pageNum and repeats a full page
 
 
 def api_get(base_url: str, path: str, params: dict, auth_header: str, timeout: int) -> list:
@@ -52,15 +56,18 @@ def api_get(base_url: str, path: str, params: dict, auth_header: str, timeout: i
 def fetch_all_records(base_url: str, auth_header: str, timeout: int) -> list:
     """Fetch all bucket utilization records across all pages.
 
-    Deliberately sends no from/to/latest filter: with a from/to window the Wasabi
-    Stats API silently drops buckets (verified: a bucket present without the filter
-    vanished with it, even for a 30-day window or to=tomorrow). Without parameters
-    it returns the recent daily records of every bucket; newest_per_bucket() then
-    picks the newest one per bucket.
+    The Wasabi Stats API pages are ZERO-based: pageNum=0 is the first page (and the
+    default when pageNum is omitted). Starting at 1 silently skips the first
+    PAGE_SIZE records, which are the oldest ones (the API returns ~31 days of daily
+    records sorted by time). What is left is only the tail of the list, so which
+    buckets show up depends on where the page boundary falls - buckets then
+    appear and vanish whenever a new daily record shifts that boundary.
+
+    No from/to/latest filter is sent. newest_per_bucket() picks the newest record
+    per bucket from the complete result.
     """
     records: list = []
-    page_num = 1
-    while True:
+    for page_num in range(MAX_PAGES):
         page = api_get(
             base_url,
             "/v1/standalone/utilizations/bucket",
@@ -71,12 +78,14 @@ def fetch_all_records(base_url: str, auth_header: str, timeout: int) -> list:
             auth_header,
             timeout,
         )
-        if not page:
-            break
         records.extend(page)
         if len(page) < PAGE_SIZE:
             break
-        page_num += 1
+    else:
+        raise RuntimeError(
+            f"Wasabi Stats API returned more than {MAX_PAGES} pages - giving up "
+            "(pagination not advancing?)"
+        )
 
     return records
 
@@ -93,6 +102,36 @@ def newest_per_bucket(records: list) -> dict:
         if current is None or end_time > current.get("EndTime", ""):
             newest[bucket] = record
     return newest
+
+
+def _parse_end_time(value: object) -> datetime | None:
+    try:
+        return datetime.strptime(str(value), "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
+
+
+def classify_buckets(newest: dict) -> list:
+    """Return (name, record, obsolete) for every bucket that should be reported.
+
+    A bucket whose newest record is OBSOLETE_AFTER_DAYS or more behind the newest
+    record of the whole account has stopped producing data (typically: deleted) and is
+    flagged obsolete. Once it is more than HIDE_AFTER_DAYS behind it is dropped, so a
+    deleted bucket is shown for a limited time only. Age is measured against the API's
+    own newest record, not the local clock, so an API-wide delay marks nothing obsolete.
+    """
+    parsed = {name: _parse_end_time(rec.get("EndTime")) for name, rec in newest.items()}
+    known = [t for t in parsed.values() if t is not None]
+    reference = max(known) if known else None
+
+    result = []
+    for name, record in newest.items():
+        end = parsed[name]
+        age_days = (reference - end).days if reference and end else 0
+        if age_days > HIDE_AFTER_DAYS:
+            continue
+        result.append((name, record, age_days >= OBSOLETE_AFTER_DAYS))
+    return result
 
 
 def main() -> int:
@@ -118,7 +157,7 @@ def main() -> int:
     buckets = newest_per_bucket(records)
 
     print(SECTION_HEADER)
-    for bucket_name, record in buckets.items():
+    for bucket_name, record, obsolete in classify_buckets(buckets):
         output = {
             "bucket": bucket_name,
             "region": record.get("Region"),
@@ -126,6 +165,7 @@ def main() -> int:
             "deleted_bytes": record.get("DeletedStorageSizeBytes", 0),
             "padded_bytes": record.get("PaddedStorageSizeBytes"),
             "end_time": record.get("EndTime"),
+            "obsolete": obsolete,
         }
         print(json.dumps(output, ensure_ascii=False))
 

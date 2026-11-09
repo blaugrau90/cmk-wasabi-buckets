@@ -17,7 +17,7 @@
     },
     'name': 'wasabi',
     'title': 'Wasabi Storage Utilization',
-    'version': '1.2.0',
+    'version': '1.2.1',
     'version.min_required': '2.3.0b1',
     'version.packaged': 'cmk-mkp-tool 1.0.0',
     'version.usable_until': None,
